@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pixiv tag bookmark
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
+// @version      1.2.2
 // @description  Pixivの作品ページにタグありのブックマーク機能を追加します
 // @author       y_kahou
 // @match        https://www.pixiv.net/*
@@ -376,7 +376,7 @@ const listener = {
         setSecret()
     },
     bookmark: async function(e) {
-        let url = document.querySelector('link[rel="canonical"]').getAttribute('href')
+        let url = document.querySelector('link[rel="alternate"][hreflang="ja"]').getAttribute('href')
         let work_id = url.match(/artworks\/(\d+)$/)[1]
         let tags = document.querySelector('#tb-text').value.replace('　', ' ').split(' ')
         let comment = ''
@@ -406,7 +406,7 @@ const request = {
             fetch(url)
             .then(response => response.text())
             .then(data => {
-                let result = data.match(/token":"(\w+)"/)
+                let result = data.match(/\\"token\\":\\"(\w+)\\"/)
                 if (!result) reject(null)
                 else resolve(result[1])
             })
