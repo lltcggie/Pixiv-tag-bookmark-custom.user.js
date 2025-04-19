@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Pixiv tag bookmark
+// @name         Pixiv tag bookmark custom
 // @namespace    http://tampermonkey.net/
 // @version      1.2.1
 // @description  Pixivの作品ページにタグありのブックマーク機能を追加します
-// @author       y_kahou
+// @author       y_kahou, lltcggie
 // @match        https://www.pixiv.net/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -12,8 +12,7 @@
 // @license      MIT
 // @require      http://code.jquery.com/jquery-3.5.1.min.js
 // @require      https://greasyfork.org/scripts/419955-y-method/code/y_method.js?version=983062
-// @downloadURL https://update.greasyfork.org/scripts/420605/Pixiv%20tag%20bookmark.user.js
-// @updateURL https://update.greasyfork.org/scripts/420605/Pixiv%20tag%20bookmark.meta.js
+// @downloadURL none
 // ==/UserScript==
 
 var syncFlag = false;
@@ -160,6 +159,17 @@ label#tb-secret {
     'use strict';
     addStyle('tagbookmark', __CSS__);
     
+    if (GM_getValue('always') == null) {
+        GM_setValue('always', [])
+    }
+
+    if (GM_getValue('secret') == null) {
+        GM_setValue('secret', [])
+    }
+
+    if (GM_getValue('hide') == null) {
+        GM_setValue('hide', false)
+    }
     
     GM_registerMenuCommand('setting', async function() {
         let root = document.querySelector('#root')
@@ -239,32 +249,32 @@ async function addMytag() {
     wrap = document.createElement('div')
     wrap.id = 'tb-wrap'
     
-    // 自分用タグ
-    let mytag = document.createElement('div')
-    mytag.id = 'mytag'
-    mytag.innerHTML = `<label><input type="checkbox" onchange="this.parentNode.nextElementSibling.classList.toggle('show', this.checked)"><span>自分用タグ</span></label>`
-    let ul = document.createElement('ul')
-    let tags = await request.getMyTags(!GM_getValue('hide'))
-    for (let tag in tags) {
-        let c = 'o0'
-        if (tags[tag] >= 10)  c = 'o10'
-        if (tags[tag] >= 30)  c = 'o30'
-        if (tags[tag] >= 50)  c = 'o50'
-        if (tags[tag] >= 100) c = 'o100'
-        ul.innerHTML += `<li data-cnt="${tags[tag]}"><span class="selectable ${c}">${tag}</span></li>`
-    }
-    if (tags == null || tags.length == 0) {
-        ul.innerHTML = 'ブックマークタグがありません'
-    }
-    mytag.appendChild(ul)
-    // 高さ取得してスタイル化
-    let style = document.querySelector('#tagbookmark-ul')
-    if (style) style.outerHTML = ''
-    document.body.appendChild(mytag)
-    const mytagHeight = mytag.clientHeight
-    document.body.removeChild(mytag)
-    addStyle('tagbookmark-ul', `#mytag ul { height: 0; } #mytag ul.show { height: ${mytagHeight}px }`)
-    wrap.appendChild(mytag)
+    //// 自分用タグ
+    // let mytag = document.createElement('div')
+    // mytag.id = 'mytag'
+    // mytag.innerHTML = `<label><input type="checkbox" onchange="this.parentNode.nextElementSibling.classList.toggle('show', this.checked)"><span>自分用タグ</span></label>`
+    // let ul = document.createElement('ul')
+    // let tags = await request.getMyTags(!GM_getValue('hide'))
+    // for (let tag in tags) {
+    //     let c = 'o0'
+    //     if (tags[tag] >= 10)  c = 'o10'
+    //     if (tags[tag] >= 30)  c = 'o30'
+    //     if (tags[tag] >= 50)  c = 'o50'
+    //     if (tags[tag] >= 100) c = 'o100'
+    //     ul.innerHTML += `<li data-cnt="${tags[tag]}"><span class="selectable ${c}">${tag}</span></li>`
+    // }
+    // if (tags == null || tags.length == 0) {
+    //     ul.innerHTML = 'ブックマークタグがありません'
+    // }
+    // mytag.appendChild(ul)
+    // // 高さ取得してスタイル化
+    // let style = document.querySelector('#tagbookmark-ul')
+    // if (style) style.outerHTML = ''
+    // document.body.appendChild(mytag)
+    // const mytagHeight = mytag.clientHeight
+    // document.body.removeChild(mytag)
+    // addStyle('tagbookmark-ul', `#mytag ul { height: 0; } #mytag ul.show { height: ${mytagHeight}px }`)
+    // wrap.appendChild(mytag)
     
     // 登録用text
     let tagText = document.createElement('input')
@@ -303,7 +313,8 @@ async function addMytag() {
     
     // すべてのタグへの設定
     let artTags = [...footer.querySelectorAll('.selectable')], artTagsText = artTags.map(e => e.textContent)
-    let myTags  = [...mytag.querySelectorAll('.selectable')]
+    //let myTags  = [...mytag.querySelectorAll('.selectable')]
+    let myTags  = []
     for (let tag of [...artTags, ...myTags]) {
         tag.addEventListener('click', listener.tag)
         let t = tag.textContent, selected
@@ -311,6 +322,10 @@ async function addMytag() {
             selected = !!detail.tags.find(e => e == t)
         } else {
             selected = always.includes(t) && artTagsText.includes(t)
+            // users入り以外のタグは自動選択
+            if (!selected) {
+                selected = artTagsText.includes(t) && t.indexOf("users入り") === -1
+            }
         }
         tag.classList.toggle('selected', selected)
     }
@@ -320,13 +335,26 @@ async function addMytag() {
     
     syncFlag = false;
     oldId = artId;
+
+    // デフォは非公開
+    if (!detail) {
+        document.querySelector('#tb-secret input').checked = true
+    }
+
+    // 紛らわしいので元のお気に入りアイコンを消す
+    if (already) {
+        already.parentElement.remove()
+    }
+    else { // まだブックマークしてなかった場合
+        var bookmark = document.querySelector('.gtm-main-bookmark')
+        if (bookmark) {
+            bookmark.parentElement.remove()
+        }
+    }
 }
 
-
-
-
 function setSecret() {
-    let checked = false;
+    let checked = document.querySelector('#tb-secret input').checked;
     let secret = (GM_getValue('secret') || [])
     for (let tag of $('#tb-text').val().replace('　', ' ').split(' ')) {
         if (secret.includes(tag)) {
