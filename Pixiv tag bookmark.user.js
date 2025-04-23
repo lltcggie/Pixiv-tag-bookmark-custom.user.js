@@ -15,8 +15,7 @@
 // @downloadURL none
 // ==/UserScript==
 
-var syncFlag = false;
-var artId, oldId;
+var artId, oldId, observer;
 const __CSS__ = `
 :root {
     --bookmarked-color: rgb(255, 64, 96);
@@ -208,18 +207,31 @@ label#tb-secret {
     console.log('Pixiv tag bookmark');
     // 最初の一回
     addMytag();
-    
-    new MutationObserver(addMytag)
-    .observe(document.body, { childList: true, subtree: true ,attributes: true, characterData:true })
+
+    const setObserver = function () {
+        if (observer) {
+            return;
+        }
+        observer = new MutationObserver(addMytag);
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+    }
+
+    setObserver();
+
+    const func_nativePushState = window.history.pushState;
+    const func_nativeReplaceState = window.history.replaceState;
+    window.history.pushState = function(...args){
+        func_nativePushState.call(window.history, ...args);
+        setObserver();
+    };
+    window.history.replaceState = function(...args){
+        func_nativeReplaceState.call(window.history, ...args);
+        setObserver();
+    };
 })();
 
 
 async function addMytag() {
-    if (syncFlag) {
-        return
-    }
-    syncFlag = true
-    
     try { // イラストページ判定
         let match = location.href.match(/artworks\/(\d+)/)
         if (match == null) throw 'イラストページではない'
@@ -229,16 +241,36 @@ async function addMytag() {
     }
     catch(e) {
         // console.log(e);
-        syncFlag = false
         return
     }
     console.log('イラスト作品なのでタグブクマ追加');
-    let footer = (await repeatGetElements('figcaption footer', 500, 20))[0]
-    
+
+    let footer;
+    try { // イラストページ判定
+        footer = document.querySelector('figcaption footer');
+        if (!footer) throw 'まだページの準備ができていない'
+    }
+    catch(e) {
+        // console.log(e);
+        return
+    }
+
     // ブクマ済みならタグとか取得
     let already = document.querySelector('a[href^="/bookmark_add.php"]')
     let detail = !already ? null : await request.getArtworkData(already.href)
     let always = (GM_getValue('always') || [])
+
+    let gtmMainBookmark;
+    try { // イラストページ判定
+        if (!already) {
+            gtmMainBookmark = document.querySelector('.gtm-main-bookmark svg')
+            if (!gtmMainBookmark) throw 'まだページの準備ができていない'
+        }
+    }
+    catch(e) {
+        // console.log(e);
+        return
+    }
     
     // 既存タグに機能追加
     $(footer).find('li a').addClass('selectable')
@@ -296,7 +328,7 @@ async function addMytag() {
         tbm.className = 'already'
         tbm.appendChild(already.querySelector('svg').cloneNode(true))
     } else {
-        tbm.appendChild(document.querySelector('.gtm-main-bookmark svg').cloneNode(true))
+        tbm.appendChild(gtmMainBookmark.cloneNode(true))
     }
     tbm.addEventListener('click', listener.bookmark)
     wrap.appendChild(tbm)
@@ -333,8 +365,11 @@ async function addMytag() {
     setTagcnt()
     if (!detail) setSecret()
     
-    syncFlag = false;
     oldId = artId;
+    if (observer) {
+        observer.disconnect();
+        observer = null;
+    }
 
     // デフォは非公開
     if (!detail) {
